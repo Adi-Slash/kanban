@@ -59,10 +59,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Build Next.js frontend for production.
-- [ ] Configure backend/container to serve built frontend at `/`.
-- [ ] Remove/replace temporary scaffold page with real Kanban UI delivery.
-- [ ] Ensure static asset routing is correct in containerized runtime.
+- [x] Build Next.js frontend for production.
+- [x] Configure backend/container to serve built frontend at `/`.
+- [x] Remove/replace temporary scaffold page with real Kanban UI delivery.
+- [x] Ensure static asset routing is correct in containerized runtime.
 
 ### Tests
 

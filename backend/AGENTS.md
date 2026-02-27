@@ -3,14 +3,14 @@
 ## Scope
 
 - `backend/` contains the FastAPI service for the Project Management MVP.
-- In Phase 2, backend serves a static hello-world page and a sample API endpoint.
+- Backend serves the exported frontend app at `/` and API routes under `/api`.
 
 ## Current Structure
 
 - `backend/app/main.py`: FastAPI app entrypoint.
-  - `GET /` serves `backend/static/index.html`.
+  - Serves static frontend files from `backend/static` at `/`.
   - `GET /api/hello` returns a simple JSON payload.
-- `backend/static/index.html`: static smoke page that also calls `/api/hello`.
+- `backend/static/`: built frontend output copied during Docker image build.
 - `backend/pyproject.toml`: backend Python project metadata/dependencies.
 
 ## Runtime
