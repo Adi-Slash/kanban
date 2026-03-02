@@ -13,6 +13,21 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 - AI provider/model: OpenRouter using `openai/gpt-oss-120b`.
 - Tests: simplest best-practice stack (`pytest` for backend, existing `vitest` + `playwright` for frontend).
 
+## Implemented Decisions (Current State)
+
+- Backend serves exported frontend static assets at `/` and API routes under `/api/*`.
+- DB is SQLite with normalized schema (`users`, `boards`, `columns`, `cards`, `card_placements`) and startup bootstrap/seed.
+- DB IDs are integers internally; API maps them to string IDs (`col-{id}`, `card-{id}`) for frontend compatibility.
+- One board per user is enforced at DB level (`boards.user_id` unique).
+- Backend board API currently supports:
+  - `GET /api/board`
+  - `PATCH /api/columns/{column_id}`
+  - `POST /api/columns/{column_id}/cards`
+  - `DELETE /api/columns/{column_id}/cards/{card_id}`
+  - `POST /api/cards/{card_id}/move`
+- Frontend board is backend-backed (load + mutations) and includes loading/saving states plus retryable error messaging.
+- Frontend retains local fallback behavior if backend load fails, so the UI remains usable in degraded local scenarios.
+
 ## Phase 1 - Planning and Baseline Documentation
 
 ### Checklist
