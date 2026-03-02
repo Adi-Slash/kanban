@@ -81,10 +81,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Add login page/view shown before board access.
-- [ ] Implement hardcoded credential check (`user` / `password`).
-- [ ] Add simple session/cookie handling and protected root flow.
-- [ ] Add logout action that clears session and redirects to login.
+- [x] Add login page/view shown before board access.
+- [x] Implement hardcoded credential check (`user` / `password`).
+- [x] Add simple session/cookie handling and protected root flow.
+- [x] Add logout action that clears session and redirects to login.
 
 ### Tests
 
