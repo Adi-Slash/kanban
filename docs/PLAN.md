@@ -103,10 +103,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Design normalized SQLite schema for users, boards, columns, cards, and ordering.
-- [ ] Document schema and migration/bootstrap approach in `docs/`.
-- [ ] Define strategy to produce board JSON view from normalized tables for UI and AI context.
-- [ ] Review schema tradeoffs with user and get explicit sign-off before API implementation.
+- [x] Design normalized SQLite schema for users, boards, columns, cards, and ordering.
+- [x] Document schema and migration/bootstrap approach in `docs/`.
+- [x] Define strategy to produce board JSON view from normalized tables for UI and AI context.
+- [x] Review schema tradeoffs with user and get explicit sign-off before API implementation.
 
 ### Tests
 
@@ -124,10 +124,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Implement API routes to read/update Kanban state per user.
-- [ ] Add repository/service layer for SQLite access and mapping.
-- [ ] Ensure DB auto-creates on first startup if missing.
-- [ ] Add robust request/response models and validation.
+- [x] Implement API routes to read/update Kanban state per user.
+- [x] Add repository/service layer for SQLite access and mapping.
+- [x] Ensure DB auto-creates on first startup if missing.
+- [x] Add robust request/response models and validation.
 
 ### Tests
 

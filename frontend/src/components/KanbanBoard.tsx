@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,11 +13,44 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import {
+  addCard as addCardApi,
+  deleteCard as deleteCardApi,
+  getBoard,
+  moveCard as moveCardApi,
+  renameColumn as renameColumnApi,
+} from "@/lib/api";
 import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 
 export const KanbanBoard = () => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadBoard = async () => {
+      try {
+        const remoteBoard = await getBoard();
+        if (!isMounted) {
+          return;
+        }
+        setBoard(remoteBoard);
+        setIsBackendConnected(true);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setIsBackendConnected(false);
+      }
+    };
+
+    void loadBoard();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -39,9 +72,28 @@ export const KanbanBoard = () => {
       return;
     }
 
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    if (isBackendConnected) {
+      const targetColumnId = overId.startsWith("col-")
+        ? overId
+        : board.columns.find((column) => column.cardIds.includes(overId))?.id;
+      if (!targetColumnId) {
+        return;
+      }
+      const beforeCardId = overId.startsWith("card-") ? overId : null;
+      void moveCardApi(activeId, targetColumnId, beforeCardId)
+        .then((nextBoard) => {
+          setBoard(nextBoard);
+        })
+        .catch(() => {});
+      return;
+    }
+
     setBoard((prev) => ({
       ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
+      columns: moveCard(prev.columns, activeId, overId),
     }));
   };
 
@@ -52,9 +104,28 @@ export const KanbanBoard = () => {
         column.id === columnId ? { ...column, title } : column
       ),
     }));
+
+    if (!isBackendConnected) {
+      return;
+    }
+
+    void renameColumnApi(columnId, title)
+      .then((nextBoard) => {
+        setBoard(nextBoard);
+      })
+      .catch(() => {});
   };
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
+    if (isBackendConnected) {
+      void addCardApi(columnId, title, details)
+        .then((nextBoard) => {
+          setBoard(nextBoard);
+        })
+        .catch(() => {});
+      return;
+    }
+
     const id = createId("card");
     setBoard((prev) => ({
       ...prev,
@@ -71,6 +142,15 @@ export const KanbanBoard = () => {
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
+    if (isBackendConnected) {
+      void deleteCardApi(columnId, cardId)
+        .then((nextBoard) => {
+          setBoard(nextBoard);
+        })
+        .catch(() => {});
+      return;
+    }
+
     setBoard((prev) => {
       return {
         ...prev,
