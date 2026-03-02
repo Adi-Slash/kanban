@@ -250,10 +250,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Add right-sidebar AI chat UI integrated into board experience.
-- [ ] Implement message history, send state, and error state UX.
-- [ ] On AI mutation operations, refresh/reconcile board state automatically.
-- [ ] Keep UI aligned with project color/design language.
+- [x] Add right-sidebar AI chat UI integrated into board experience.
+- [x] Implement message history, send state, and error state UX.
+- [x] On AI mutation operations, refresh/reconcile board state automatically.
+- [x] Keep UI aligned with project color/design language.
 
 ### Tests
 

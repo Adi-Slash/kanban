@@ -9,6 +9,7 @@ vi.mock("@/lib/api", () => ({
   addCard: vi.fn(),
   deleteCard: vi.fn(),
   moveCard: vi.fn(),
+  aiChat: vi.fn(),
 }));
 
 import { getBoard } from "@/lib/api";

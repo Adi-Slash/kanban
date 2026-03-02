@@ -4,9 +4,9 @@ This document describes the current `frontend/` codebase so agents can make safe
 
 ## Scope
 
-- This is a standalone Next.js App Router project that currently implements a frontend-only Kanban demo.
+- This is a Next.js App Router project for the MVP frontend experience.
 - Main user route is `/` and renders `KanbanBoard`.
-- No backend integration is present yet in this frontend package.
+- The board is backend-backed via `/api/*` with local fallback behavior when load fails.
 
 ## Stack
 
@@ -22,8 +22,9 @@ This document describes the current `frontend/` codebase so agents can make safe
 - Entry route:
   - `src/app/page.tsx` renders `<KanbanBoard />`.
 - Board state and behaviors:
-  - `src/components/KanbanBoard.tsx` keeps board state in React state.
+  - `src/components/KanbanBoard.tsx` keeps board state in React state, loading from backend and applying backend mutation responses.
   - Supports rename column, add card, delete card, drag-and-drop move.
+  - Includes right-sidebar AI chat UI that calls backend AI APIs and reconciles returned board state.
 - Presentational/interaction components:
   - `src/components/KanbanColumn.tsx`
   - `src/components/KanbanCard.tsx`
@@ -31,6 +32,7 @@ This document describes the current `frontend/` codebase so agents can make safe
   - `src/components/NewCardForm.tsx`
 - Domain helpers and seed data:
   - `src/lib/kanban.ts` defines types, `initialData`, `moveCard`, `createId`.
+  - `src/lib/api.ts` defines typed backend API clients for board and AI chat endpoints.
 
 ## Styling and Theme
 
@@ -50,6 +52,8 @@ This document describes the current `frontend/` codebase so agents can make safe
 
 - `src/lib/kanban.test.ts`: `moveCard` behavior.
 - `src/components/KanbanBoard.test.tsx`: render, rename, add/remove card interactions.
+- `src/components/KanbanBoard.api.test.tsx`: backend load/fallback behavior.
+- `src/components/KanbanBoard.chat.test.tsx`: AI chat send/error UX and board refresh from AI response.
 - `tests/kanban.spec.ts`: page load, add card, drag between columns.
 
 ## Change Guidelines for Agents
