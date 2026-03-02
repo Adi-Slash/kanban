@@ -11,6 +11,7 @@ from app.ai import (
     OPENROUTER_URL,
     OpenRouterClient,
     build_smoke_request_payload,
+    parse_plan_response,
     parse_smoke_response,
 )
 
@@ -86,3 +87,31 @@ def test_openrouter_client_smoke_check_raises_for_http_error() -> None:
             client.smoke_check()
 
     assert "HTTP 400" in str(exc.value)
+
+
+def test_parse_plan_response_returns_validated_plan() -> None:
+    parsed = parse_plan_response(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"assistant_message":"Done.","operations":[{"type":"rename_column",'
+                            '"column_id":"col-1","title":"Backlog Next"}]}'
+                        )
+                    }
+                }
+            ]
+        }
+    )
+    assert parsed.assistant_message == "Done."
+    assert len(parsed.operations) == 1
+    assert parsed.operations[0].type == "rename_column"
+
+
+def test_parse_plan_response_raises_for_invalid_json() -> None:
+    with pytest.raises(AIClientError) as exc:
+        parse_plan_response(
+            {"choices": [{"message": {"content": "not-json"}}]}
+        )
+    assert "not valid JSON" in str(exc.value)

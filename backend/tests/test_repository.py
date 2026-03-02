@@ -1,4 +1,5 @@
 from app.repository import KanbanRepository
+from app.schemas import AIOperation
 
 
 def _first_column_id(board: dict) -> str:
@@ -37,3 +38,29 @@ def test_repository_create_move_delete_card(temp_db_path) -> None:
 
     after_delete = repo.delete_card("user", target_column_id, created_id)
     assert created_id not in after_delete.cards
+
+
+def test_repository_ai_operations_are_transactional(temp_db_path) -> None:
+    repo = KanbanRepository(temp_db_path)
+    repo.initialize()
+    before = repo.get_board("user")
+    first_column_id = before.columns[0].id
+
+    try:
+        repo.apply_ai_operations(
+            "user",
+            [
+                AIOperation(
+                    type="create_card",
+                    column_id=first_column_id,
+                    title="Transactional create",
+                    details="should rollback",
+                ),
+                AIOperation(type="move_card", card_id="card-999999", column_id=first_column_id),
+            ],
+        )
+    except Exception:
+        pass
+
+    after = repo.get_board("user")
+    assert after.model_dump() == before.model_dump()

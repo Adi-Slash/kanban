@@ -228,10 +228,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 ### Checklist
 
 - [x] Finalize and approve structured output schema.
-- [ ] Send board JSON snapshot + user message + conversation history to model.
-- [ ] Validate model JSON output strictly before applying operations.
-- [ ] Apply valid operations transactionally; reject/ignore invalid ops safely.
-- [ ] Return assistant message + resulting board state to frontend.
+- [x] Send board JSON snapshot + user message + conversation history to model.
+- [x] Validate model JSON output strictly before applying operations.
+- [x] Apply operations transactionally with strict all-or-nothing behavior.
+- [x] Return assistant message + resulting board state to frontend.
 
 ### Tests
 

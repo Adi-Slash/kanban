@@ -9,6 +9,8 @@ from app.ai import AIClientError, OpenRouterClient, load_openrouter_api_key
 from app.db import parse_api_id
 from app.repository import KanbanRepository, NotFoundError, ValidationError
 from app.schemas import (
+    AIChatRequest,
+    AIChatResponse,
     AISmokeResponse,
     Board,
     CreateCardRequest,
@@ -136,6 +138,41 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
         try:
             return request.app.state.ai_client.smoke_check()
+        except AIClientError as exc:
+            if exc.kind == "timeout":
+                raise HTTPException(status_code=504, detail=str(exc)) from exc
+            if exc.kind == "config_error":
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.post("/api/ai/chat", response_model=AIChatResponse)
+    def ai_chat(
+        request: Request,
+        payload: AIChatRequest,
+        username: str = Query(default="user"),
+    ) -> AIChatResponse:
+        startup_error = request.app.state.ai_client_error
+        if startup_error is not None:
+            raise HTTPException(status_code=503, detail=str(startup_error))
+
+        try:
+            current_board = request.app.state.repo.get_board(username)
+            assistant_message, operations = request.app.state.ai_client.build_plan(
+                board_snapshot=current_board.model_dump(),
+                user_message=payload.message,
+                conversation_history=[
+                    {"role": message.role, "content": message.content}
+                    for message in payload.history
+                ],
+            )
+            updated_board = request.app.state.repo.apply_ai_operations(username, operations)
+            return AIChatResponse(
+                assistantMessage=assistant_message,
+                operations=operations,
+                board=updated_board,
+            )
+        except (NotFoundError, ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except AIClientError as exc:
             if exc.kind == "timeout":
                 raise HTTPException(status_code=504, detail=str(exc)) from exc
