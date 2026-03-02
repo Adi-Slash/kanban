@@ -30,3 +30,8 @@ class CreateCardRequest(BaseModel):
 class MoveCardRequest(BaseModel):
     targetColumnId: str
     beforeCardId: str | None = None
+
+
+class AISmokeResponse(BaseModel):
+    assistantMessage: str
+    model: str

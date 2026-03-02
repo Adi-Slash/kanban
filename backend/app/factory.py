@@ -5,9 +5,16 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 
+from app.ai import AIClientError, OpenRouterClient, load_openrouter_api_key
 from app.db import parse_api_id
 from app.repository import KanbanRepository, NotFoundError, ValidationError
-from app.schemas import Board, CreateCardRequest, MoveCardRequest, RenameColumnRequest
+from app.schemas import (
+    AISmokeResponse,
+    Board,
+    CreateCardRequest,
+    MoveCardRequest,
+    RenameColumnRequest,
+)
 
 
 def _default_db_path() -> Path:
@@ -25,6 +32,13 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.repo = repo
         app.state.repo.initialize()
+        try:
+            api_key = load_openrouter_api_key()
+            app.state.ai_client = OpenRouterClient(api_key=api_key)
+            app.state.ai_client_error = None
+        except AIClientError as exc:
+            app.state.ai_client = None
+            app.state.ai_client_error = exc
         yield
 
     app = FastAPI(title="Project Management MVP API", lifespan=lifespan)
@@ -113,6 +127,21 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except NotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/ai/smoke", response_model=AISmokeResponse)
+    def ai_smoke_check(request: Request) -> AISmokeResponse:
+        startup_error = request.app.state.ai_client_error
+        if startup_error is not None:
+            raise HTTPException(status_code=503, detail=str(startup_error))
+
+        try:
+            return request.app.state.ai_client.smoke_check()
+        except AIClientError as exc:
+            if exc.kind == "timeout":
+                raise HTTPException(status_code=504, detail=str(exc)) from exc
+            if exc.kind == "config_error":
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
     return app

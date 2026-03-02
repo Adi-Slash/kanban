@@ -19,6 +19,11 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 - DB is SQLite with normalized schema (`users`, `boards`, `columns`, `cards`, `card_placements`) and startup bootstrap/seed.
 - DB IDs are integers internally; API maps them to string IDs (`col-{id}`, `card-{id}`) for frontend compatibility.
 - One board per user is enforced at DB level (`boards.user_id` unique).
+- AI integration standardizes on OpenRouter using `openai/gpt-oss-120b`.
+- AI operation application policy is strict all-or-nothing transactions (no partial apply).
+- Auth sessions remain in-memory only for MVP.
+- AI chat remains available in frontend fallback mode and surfaces backend errors inline.
+- Phase progression is strict: unchecked earlier phases block later phase work.
 - Backend board API currently supports:
   - `GET /api/board`
   - `PATCH /api/columns/{column_id}`
@@ -183,9 +188,9 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Implement backend OpenRouter client configuration from `.env`.
-- [ ] Add minimal AI endpoint/service with `"2+2"` connectivity check flow.
-- [ ] Add timeout/error handling and clear failure responses.
+- [x] Implement backend OpenRouter client configuration from `.env`.
+- [x] Add minimal AI endpoint/service with `"2+2"` connectivity check flow.
+- [x] Add timeout/error handling and clear failure responses.
 
 ### Tests
 
