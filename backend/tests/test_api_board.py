@@ -52,3 +52,33 @@ def test_invalid_card_id_returns_422(client) -> None:
         json={"targetColumnId": "col-1"},
     )
     assert response.status_code == 422
+
+
+def test_board_changes_persist_across_requests(client) -> None:
+    board = client.get("/api/board").json()
+    first_column_id = board["columns"][0]["id"]
+    review_column_id = next(
+        column["id"] for column in board["columns"] if column["title"] == "Review"
+    )
+
+    add_response = client.post(
+        f"/api/columns/{first_column_id}/cards",
+        json={"title": "Persistence check card", "details": "Persists across requests"},
+    )
+    assert add_response.status_code == 200
+    created_card_id = add_response.json()["columns"][0]["cardIds"][-1]
+
+    after_add = client.get("/api/board").json()
+    assert created_card_id in after_add["cards"]
+
+    move_response = client.post(
+        f"/api/cards/{created_card_id}/move",
+        json={"targetColumnId": review_column_id},
+    )
+    assert move_response.status_code == 200
+
+    after_move = client.get("/api/board").json()
+    review_column = next(
+        column for column in after_move["columns"] if column["id"] == review_column_id
+    )
+    assert created_card_id in review_column["cardIds"]

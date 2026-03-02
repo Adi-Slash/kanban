@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -26,31 +26,46 @@ export const KanbanBoard = () => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [isLoadingBoard, setIsLoadingBoard] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadBoard = useCallback(async () => {
+    setIsLoadingBoard(true);
+    setErrorMessage(null);
+    try {
+      const remoteBoard = await getBoard();
+      setBoard(remoteBoard);
+      setIsBackendConnected(true);
+    } catch {
+      setIsBackendConnected(false);
+      setErrorMessage(
+        "Could not load board from backend. Using local fallback data for now."
+      );
+    } finally {
+      setIsLoadingBoard(false);
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadBoard = async () => {
+    const runLoad = async () => {
       try {
-        const remoteBoard = await getBoard();
         if (!isMounted) {
           return;
         }
-        setBoard(remoteBoard);
-        setIsBackendConnected(true);
+        await loadBoard();
       } catch {
-        if (!isMounted) {
-          return;
-        }
-        setIsBackendConnected(false);
+        // handled inside loadBoard
       }
     };
 
-    void loadBoard();
+    void runLoad();
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadBoard]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -86,8 +101,15 @@ export const KanbanBoard = () => {
       void moveCardApi(activeId, targetColumnId, beforeCardId)
         .then((nextBoard) => {
           setBoard(nextBoard);
+          setErrorMessage(null);
         })
-        .catch(() => {});
+        .catch(() => {
+          setErrorMessage("Could not save card movement. Please try again.");
+        })
+        .finally(() => {
+          setIsSaving(false);
+        });
+      setIsSaving(true);
       return;
     }
 
@@ -112,17 +134,31 @@ export const KanbanBoard = () => {
     void renameColumnApi(columnId, title)
       .then((nextBoard) => {
         setBoard(nextBoard);
+        setErrorMessage(null);
       })
-      .catch(() => {});
+      .catch(() => {
+        setErrorMessage("Could not save column rename. Please try again.");
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
+    setIsSaving(true);
   };
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
     if (isBackendConnected) {
+      setIsSaving(true);
       void addCardApi(columnId, title, details)
         .then((nextBoard) => {
           setBoard(nextBoard);
+          setErrorMessage(null);
         })
-        .catch(() => {});
+        .catch(() => {
+          setErrorMessage("Could not save new card. Please try again.");
+        })
+        .finally(() => {
+          setIsSaving(false);
+        });
       return;
     }
 
@@ -143,11 +179,18 @@ export const KanbanBoard = () => {
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
     if (isBackendConnected) {
+      setIsSaving(true);
       void deleteCardApi(columnId, cardId)
         .then((nextBoard) => {
           setBoard(nextBoard);
+          setErrorMessage(null);
         })
-        .catch(() => {});
+        .catch(() => {
+          setErrorMessage("Could not delete card. Please try again.");
+        })
+        .finally(() => {
+          setIsSaving(false);
+        });
       return;
     }
 
@@ -210,6 +253,34 @@ export const KanbanBoard = () => {
                 {column.title}
               </div>
             ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {isLoadingBoard ? (
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                Loading board...
+              </p>
+            ) : null}
+            {isSaving ? (
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary-blue)]">
+                Saving...
+              </p>
+            ) : null}
+            {errorMessage ? (
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
+                  {errorMessage}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void loadBoard();
+                  }}
+                  className="rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)]"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
           </div>
         </header>
 

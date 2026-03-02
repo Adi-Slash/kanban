@@ -146,10 +146,10 @@ This document defines the execution plan for the MVP. Work is done in ordered ph
 
 ### Checklist
 
-- [ ] Replace local in-memory board state with backend-backed state loading/saving.
-- [ ] Wire board actions (rename/add/move/delete) to API calls.
-- [ ] Add loading/error UX for request failures.
-- [ ] Preserve existing board interaction behavior and polish.
+- [x] Replace local in-memory board state with backend-backed state loading/saving.
+- [x] Wire board actions (rename/add/move/delete) to API calls.
+- [x] Add loading/error UX for request failures.
+- [x] Preserve existing board interaction behavior and polish.
 
 ### Tests
 
