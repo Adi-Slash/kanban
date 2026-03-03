@@ -1,36 +1,63 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { readAuthCookie, validateCredentials, writeAuthCookie } from "@/lib/auth";
+import { readAuthCookie, validateCredentials, writeAuthCookie, verifyAuth } from "@/lib/auth";
 
 export const KanbanApp = () => {
+  const searchParams = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => readAuthCookie());
+  const [isLoading, setIsLoading] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleLogin = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => {
+    const checkAuth = async () => {
+      const isAuth = await verifyAuth();
+      setIsAuthenticated(isAuth);
+      setIsLoading(false);
+    };
+    checkAuth();
+  }, []);
 
-    if (!validateCredentials(username, password)) {
+  useEffect(() => {
+    if (searchParams && searchParams.get("unauthorized") === "true") {
+      setIsAuthenticated(false);
+      setError("Session expired. Please log in again.");
+    }
+  }, [searchParams]);
+
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+
+    const isValid = await validateCredentials(username, password);
+    if (!isValid) {
       setError("Invalid credentials. Use user / password.");
       return;
     }
 
-    writeAuthCookie(true);
-    setError("");
     setPassword("");
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
-    writeAuthCookie(false);
+  const handleLogout = async () => {
+    await writeAuthCookie(false);
     setIsAuthenticated(false);
     setUsername("");
     setPassword("");
     setError("");
   };
+
+  if (isLoading) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-6 py-12">
+        <p className="text-sm text-[var(--gray-text)]">Loading...</p>
+      </main>
+    );
+  }
 
   if (!isAuthenticated) {
     return (

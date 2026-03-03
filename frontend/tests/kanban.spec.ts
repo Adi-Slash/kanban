@@ -102,6 +102,20 @@ test("moves a card between columns", async ({ page }) => {
 
 test("ai chat updates the board after response", async ({ page }) => {
   const aiCardId = "card-ai-1";
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "Login successful" }),
+    });
+  });
+  await page.route("**/api/auth/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true }),
+    });
+  });
   await page.route("**/api/board", async (route) => {
     await route.fulfill({
       status: 200,
@@ -149,4 +163,106 @@ test("ai chat updates the board after response", async ({ page }) => {
 
   await expect(page.getByText("Added AI Follow-up in Backlog.")).toBeVisible();
   await expect(page.getByTestId(`card-${aiCardId}`)).toBeVisible();
+});
+
+test("renames a column", async ({ page }) => {
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "Login successful" }),
+    });
+  });
+  await page.route("**/api/auth/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true }),
+    });
+  });
+  await page.route("**/api/board", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(mockedBoard),
+    });
+  });
+  await page.route("**/api/columns/col-backlog", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const updatedBoard = {
+        ...mockedBoard,
+        columns: mockedBoard.columns.map((col) =>
+          col.id === "col-backlog" ? { ...col, title: "Ideas" } : col
+        ),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(updatedBoard),
+      });
+    }
+  });
+
+  await login(page);
+  const backlogColumn = page.getByTestId("column-col-backlog");
+  await expect(backlogColumn.getByText("Backlog")).toBeVisible();
+  
+  const titleInput = backlogColumn.locator('input[aria-label="Column title"]');
+  await titleInput.fill("Ideas");
+  await titleInput.blur();
+
+  await expect(backlogColumn.getByText("Ideas")).toBeVisible();
+});
+
+test("deletes a card", async ({ page }) => {
+  const cardToDelete = "card-1";
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "Login successful" }),
+    });
+  });
+  await page.route("**/api/auth/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true }),
+    });
+  });
+  await page.route("**/api/board", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(mockedBoard),
+    });
+  });
+  await page.route(/api\/columns\/col-backlog\/cards\/card-1/, async (route) => {
+    if (route.request().method() === "DELETE") {
+      const updatedBoard = {
+        ...mockedBoard,
+        columns: mockedBoard.columns.map((col) =>
+          col.id === "col-backlog"
+            ? { ...col, cardIds: col.cardIds.filter((id) => id !== cardToDelete) }
+            : col
+        ),
+        cards: Object.fromEntries(
+          Object.entries(mockedBoard.cards).filter(([id]) => id !== cardToDelete)
+        ),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(updatedBoard),
+      });
+    }
+  });
+
+  await login(page);
+  const card = page.getByTestId(`card-${cardToDelete}`);
+  await expect(card).toBeVisible();
+  
+  await card.getByRole("button", { name: /remove/i }).click();
+  
+  await expect(card).not.toBeVisible();
 });

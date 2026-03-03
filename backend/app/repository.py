@@ -47,7 +47,9 @@ class KanbanRepository:
             conn.commit()
             return _build_board(conn, board_id)
 
-    def create_card(self, username: str, column_api_id: str, title: str, details: str) -> Board:
+    def create_card(
+        self, username: str, column_api_id: str, title: str, details: str
+    ) -> Board:
         title = title.strip()
         if not title:
             raise ValidationError("Card title is required.")
@@ -83,29 +85,7 @@ class KanbanRepository:
         with sqlite_connection(self.db_path) as conn:
             board_id = _lookup_board_id(conn, username)
             _ensure_column_in_board(conn, board_id, column_id)
-
-            placement = conn.execute(
-                """
-                SELECT cp.position
-                FROM card_placements cp
-                WHERE cp.card_id = ? AND cp.column_id = ?
-                """,
-                (card_id, column_id),
-            ).fetchone()
-            if not placement:
-                raise NotFoundError("Card not found in the specified column.")
-
-            old_position = int(placement["position"])
-
-            conn.execute("DELETE FROM cards WHERE id = ? AND board_id = ?", (card_id, board_id))
-            conn.execute(
-                """
-                UPDATE card_placements
-                SET position = position - 1, updated_at = CURRENT_TIMESTAMP
-                WHERE column_id = ? AND position > ?
-                """,
-                (column_id, old_position),
-            )
+            _delete_card_by_id(conn, board_id, card_id, column_id)
             conn.commit()
             return _build_board(conn, board_id)
 
@@ -118,96 +98,30 @@ class KanbanRepository:
     ) -> Board:
         card_id = parse_api_id(card_api_id, "card")
         target_column_id = parse_api_id(target_column_api_id, "col")
+        before_card_id = (
+            parse_api_id(before_card_api_id, "card") if before_card_api_id else None
+        )
 
         with sqlite_connection(self.db_path) as conn:
             board_id = _lookup_board_id(conn, username)
             _ensure_column_in_board(conn, board_id, target_column_id)
-
-            current = conn.execute(
-                """
-                SELECT cp.column_id, cp.position
-                FROM card_placements cp
-                JOIN cards c ON c.id = cp.card_id
-                WHERE cp.card_id = ? AND c.board_id = ?
-                """,
-                (card_id, board_id),
-            ).fetchone()
-            if not current:
-                raise NotFoundError("Card not found.")
-
-            source_column_id = int(current["column_id"])
-            source_position = int(current["position"])
-
-            if before_card_api_id is None:
-                max_position = conn.execute(
-                    "SELECT COALESCE(MAX(position), -1) AS max_position FROM card_placements WHERE column_id = ?",
-                    (target_column_id,),
-                ).fetchone()["max_position"]
-                insertion_position = int(max_position) + 1
-            else:
-                before_card_id = parse_api_id(before_card_api_id, "card")
-                before_row = conn.execute(
-                    """
-                    SELECT cp.position
-                    FROM card_placements cp
-                    JOIN cards c ON c.id = cp.card_id
-                    WHERE cp.card_id = ? AND cp.column_id = ? AND c.board_id = ?
-                    """,
-                    (before_card_id, target_column_id, board_id),
-                ).fetchone()
-                if not before_row:
-                    raise NotFoundError("Reference card not found in target column.")
-                insertion_position = int(before_row["position"])
-
-            # Move card to a temporary safe slot to avoid unique(position) collisions
-            # while compacting and expanding ordered lists.
-            conn.execute(
-                """
-                UPDATE card_placements
-                SET position = -1, updated_at = CURRENT_TIMESTAMP
-                WHERE card_id = ?
-                """,
-                (card_id,),
-            )
-
-            conn.execute(
-                """
-                UPDATE card_placements
-                SET position = position - 1, updated_at = CURRENT_TIMESTAMP
-                WHERE column_id = ? AND position > ?
-                """,
-                (source_column_id, source_position),
-            )
-
-            if source_column_id == target_column_id and insertion_position > source_position:
-                insertion_position -= 1
-
-            conn.execute(
-                """
-                UPDATE card_placements
-                SET position = position + 1, updated_at = CURRENT_TIMESTAMP
-                WHERE column_id = ? AND position >= ?
-                """,
-                (target_column_id, insertion_position),
-            )
-
-            conn.execute(
-                """
-                UPDATE card_placements
-                SET column_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE card_id = ?
-                """,
-                (target_column_id, insertion_position, card_id),
-            )
+            _move_card_by_id(conn, board_id, card_id, target_column_id, before_card_id)
             conn.commit()
             return _build_board(conn, board_id)
 
-    def apply_ai_operations(self, username: str, operations: list[AIOperation]) -> Board:
+    def apply_ai_operations(
+        self, username: str, operations: list[AIOperation]
+    ) -> Board:
         with sqlite_connection(self.db_path) as conn:
             board_id = _lookup_board_id(conn, username)
             try:
                 for operation in operations:
+                    _validate_ai_operation(conn, board_id, operation)
+                for operation in operations:
                     _apply_ai_operation(conn, board_id, operation)
+            except (NotFoundError, ValidationError, ValueError):
+                conn.rollback()
+                raise
             except Exception:
                 conn.rollback()
                 raise
@@ -230,7 +144,9 @@ def _lookup_board_id(conn: sqlite3.Connection, username: str) -> int:
     return int(row["id"])
 
 
-def _ensure_column_in_board(conn: sqlite3.Connection, board_id: int, column_id: int) -> None:
+def _ensure_column_in_board(
+    conn: sqlite3.Connection, board_id: int, column_id: int
+) -> None:
     row = conn.execute(
         "SELECT id FROM columns WHERE id = ? AND board_id = ?",
         (column_id, board_id),
@@ -258,7 +174,9 @@ def _build_board(conn: sqlite3.Connection, board_id: int) -> Board:
     ).fetchall()
 
     cards: dict[str, Card] = {}
-    card_ids_by_column: dict[int, list[str]] = {int(row["id"]): [] for row in columns_rows}
+    card_ids_by_column: dict[int, list[str]] = {
+        int(row["id"]): [] for row in columns_rows
+    }
 
     for row in cards_rows:
         card_api_id = to_card_api_id(int(row["id"]))
@@ -281,7 +199,9 @@ def _build_board(conn: sqlite3.Connection, board_id: int) -> Board:
     return Board(columns=columns, cards=cards)
 
 
-def _ensure_card_in_board(conn: sqlite3.Connection, board_id: int, card_id: int) -> None:
+def _ensure_card_in_board(
+    conn: sqlite3.Connection, board_id: int, card_id: int
+) -> None:
     row = conn.execute(
         "SELECT id FROM cards WHERE id = ? AND board_id = ?",
         (card_id, board_id),
@@ -290,20 +210,30 @@ def _ensure_card_in_board(conn: sqlite3.Connection, board_id: int, card_id: int)
         raise NotFoundError("Card not found.")
 
 
-def _delete_card_by_id(conn: sqlite3.Connection, board_id: int, card_id: int) -> None:
-    placement = conn.execute(
-        """
+def _delete_card_by_id(
+    conn: sqlite3.Connection,
+    board_id: int,
+    card_id: int,
+    column_id: int | None = None,
+) -> None:
+    query = """
         SELECT cp.column_id, cp.position
         FROM card_placements cp
         JOIN cards c ON c.id = cp.card_id
         WHERE cp.card_id = ? AND c.board_id = ?
-        """,
-        (card_id, board_id),
-    ).fetchone()
+    """
+    params: tuple[int, int] = (card_id, board_id)
+    if column_id is not None:
+        query += " AND cp.column_id = ?"
+        params = (card_id, board_id, column_id)
+
+    placement = conn.execute(query, params).fetchone()
     if not placement:
+        if column_id is not None:
+            raise NotFoundError("Card not found in the specified column.")
         raise NotFoundError("Card not found.")
 
-    column_id = int(placement["column_id"])
+    actual_column_id = int(placement["column_id"])
     old_position = int(placement["position"])
     conn.execute("DELETE FROM cards WHERE id = ? AND board_id = ?", (card_id, board_id))
     conn.execute(
@@ -312,7 +242,7 @@ def _delete_card_by_id(conn: sqlite3.Connection, board_id: int, card_id: int) ->
         SET position = position - 1, updated_at = CURRENT_TIMESTAMP
         WHERE column_id = ? AND position > ?
         """,
-        (column_id, old_position),
+        (actual_column_id, old_position),
     )
 
 
@@ -395,7 +325,51 @@ def _move_card_by_id(
     )
 
 
-def _apply_ai_operation(conn: sqlite3.Connection, board_id: int, operation: AIOperation) -> None:
+def _validate_ai_operation(
+    conn: sqlite3.Connection, board_id: int, operation: AIOperation
+) -> None:
+    if operation.type == "create_card":
+        if not operation.column_id or not operation.title:
+            raise ValidationError("create_card requires column_id and title")
+        column_id = parse_api_id(operation.column_id, "col")
+        _ensure_column_in_board(conn, board_id, column_id)
+    elif operation.type == "update_card":
+        if not operation.card_id:
+            raise ValidationError("update_card requires card_id")
+        card_id = parse_api_id(operation.card_id, "card")
+        _ensure_card_in_board(conn, board_id, card_id)
+    elif operation.type == "move_card":
+        if not operation.card_id or not operation.column_id:
+            raise ValidationError("move_card requires card_id and column_id")
+        card_id = parse_api_id(operation.card_id, "card")
+        target_column_id = parse_api_id(operation.column_id, "col")
+        _ensure_column_in_board(conn, board_id, target_column_id)
+        row = conn.execute(
+            "SELECT id FROM cards WHERE id = ? AND board_id = ?",
+            (card_id, board_id),
+        ).fetchone()
+        if not row:
+            raise NotFoundError("Card not found.")
+    elif operation.type == "delete_card":
+        if not operation.card_id:
+            raise ValidationError("delete_card requires card_id")
+        card_id = parse_api_id(operation.card_id, "card")
+        row = conn.execute(
+            "SELECT id FROM cards WHERE id = ? AND board_id = ?",
+            (card_id, board_id),
+        ).fetchone()
+        if not row:
+            raise NotFoundError("Card not found.")
+    elif operation.type == "rename_column":
+        if not operation.column_id or not operation.title:
+            raise ValidationError("rename_column requires column_id and title")
+        column_id = parse_api_id(operation.column_id, "col")
+        _ensure_column_in_board(conn, board_id, column_id)
+
+
+def _apply_ai_operation(
+    conn: sqlite3.Connection, board_id: int, operation: AIOperation
+) -> None:
     if operation.type == "create_card":
         column_id = parse_api_id(operation.column_id or "", "col")
         _ensure_column_in_board(conn, board_id, column_id)

@@ -30,6 +30,8 @@ type ChatMessage = {
   content: string;
 };
 
+const MAX_CHAT_MESSAGES = 20;
+
 export const KanbanBoard = () => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -227,6 +229,13 @@ export const KanbanBoard = () => {
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
   const canSendChat = chatInput.trim().length > 0 && !isChatSending;
 
+  const limitChatMessages = (messages: ChatMessage[]): ChatMessage[] => {
+    if (messages.length <= MAX_CHAT_MESSAGES) {
+      return messages;
+    }
+    return messages.slice(messages.length - MAX_CHAT_MESSAGES);
+  };
+
   const handleSendChat = async () => {
     const message = chatInput.trim();
     if (!message || isChatSending) {
@@ -246,21 +255,23 @@ export const KanbanBoard = () => {
     setChatInput("");
     setChatError(null);
     setIsChatSending(true);
-    setChatMessages((prev) => [...prev, userEntry]);
+    setChatMessages((prev) => limitChatMessages([...prev, userEntry]));
 
     try {
       const response = await aiChatApi(message, historyForApi);
       setBoard(response.board);
       setIsBackendConnected(true);
       setErrorMessage(null);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: createId("chat"),
-          role: "assistant",
-          content: response.assistantMessage,
-        },
-      ]);
+      setChatMessages((prev) =>
+        limitChatMessages([
+          ...prev,
+          {
+            id: createId("chat"),
+            role: "assistant",
+            content: response.assistantMessage,
+          },
+        ])
+      );
     } catch (error) {
       const messageText =
         error instanceof Error

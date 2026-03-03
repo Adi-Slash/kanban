@@ -10,11 +10,17 @@ const requestBoard = async (
 ): Promise<BoardData> => {
   const response = await fetch(path, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options?.headers ?? {}),
     },
   });
+
+  if (response.status === 401) {
+    window.location.href = "/?unauthorized=true";
+    throw new Error("Not authenticated");
+  }
 
   if (!response.ok) {
     let detail = "";
@@ -32,6 +38,42 @@ const requestBoard = async (
 };
 
 export const getBoard = async (): Promise<BoardData> => requestBoard("/api/board");
+
+export const login = async (username: string, password: string): Promise<void> => {
+  const params = new URLSearchParams({ username, password });
+  const response = await fetch(`/api/auth/login?${params}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error("Login failed");
+  }
+};
+
+export const logout = async (): Promise<void> => {
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error("Logout failed");
+  }
+};
+
+export const checkAuth = async (): Promise<boolean> => {
+  try {
+    const response = await fetch("/api/auth/status", {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const data = await response.json();
+    return data.authenticated === true;
+  } catch {
+    return false;
+  }
+};
 
 export const renameColumn = async (
   columnId: string,
