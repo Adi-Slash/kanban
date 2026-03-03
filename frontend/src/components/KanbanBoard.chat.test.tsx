@@ -10,6 +10,8 @@ vi.mock("@/lib/api", () => ({
   addCard: vi.fn(),
   deleteCard: vi.fn(),
   moveCard: vi.fn(),
+  updateCard: vi.fn(),
+  setCardLabels: vi.fn(),
   aiChat: vi.fn(),
 }));
 
@@ -17,6 +19,7 @@ import { aiChat, getBoard } from "@/lib/api";
 
 const mockedGetBoard = vi.mocked(getBoard);
 const mockedAiChat = vi.mocked(aiChat);
+const noop = () => {};
 
 const withAddedCard = (): BoardData => {
   const cardId = "card-999";
@@ -31,6 +34,9 @@ const withAddedCard = (): BoardData => {
         id: cardId,
         title: "AI Card",
         details: "Created from chat",
+        priority: "medium",
+        dueDate: null,
+        labelIds: [],
       },
     },
   };
@@ -58,9 +64,9 @@ describe("KanbanBoard AI chat", () => {
       board: withAddedCard(),
     });
 
-    render(<KanbanBoard />);
+    render(<KanbanBoard boardId="board-1" onBack={noop} />);
 
-    await screen.findByText("Kanban Studio");
+    await screen.findByText("Local Board");
     await userEvent.type(
       screen.getByPlaceholderText(/ask ai/i),
       "Add a card called AI Card in Backlog"
@@ -68,7 +74,11 @@ describe("KanbanBoard AI chat", () => {
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
     expect(await screen.findByText("Added a new card in Backlog.")).toBeInTheDocument();
-    expect(mockedAiChat).toHaveBeenCalledWith("Add a card called AI Card in Backlog", []);
+    expect(mockedAiChat).toHaveBeenCalledWith(
+      "board-1",
+      "Add a card called AI Card in Backlog",
+      []
+    );
 
     const firstColumn = screen.getAllByTestId(/column-/i)[0];
     expect(within(firstColumn).getByText("AI Card")).toBeInTheDocument();
@@ -77,9 +87,9 @@ describe("KanbanBoard AI chat", () => {
   it("shows inline AI error on chat failure", async () => {
     mockedAiChat.mockRejectedValue(new Error("AI request failed with status 502"));
 
-    render(<KanbanBoard />);
+    render(<KanbanBoard boardId="board-1" onBack={noop} />);
 
-    await screen.findByText("Kanban Studio");
+    await screen.findByText("Local Board");
     await userEvent.type(screen.getByPlaceholderText(/ask ai/i), "Move card-1 to Review");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
 

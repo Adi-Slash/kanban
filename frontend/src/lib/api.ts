@@ -1,13 +1,13 @@
-import type { BoardData } from "@/lib/kanban";
+import type { BoardData, BoardSummary, Label } from "@/lib/kanban";
 
 type ApiErrorPayload = {
   detail?: string;
 };
 
-const requestBoard = async (
+const apiFetch = async <T>(
   path: string,
   options?: RequestInit
-): Promise<BoardData> => {
+): Promise<T> => {
   const response = await fetch(path, {
     ...options,
     credentials: "include",
@@ -34,86 +34,200 @@ const requestBoard = async (
     throw new Error(`API request failed with status ${response.status}${suffix}`);
   }
 
-  return (await response.json()) as BoardData;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
 };
 
-export const getBoard = async (): Promise<BoardData> => requestBoard("/api/board");
+// ---- Auth ----
 
-export const login = async (username: string, password: string): Promise<void> => {
-  const params = new URLSearchParams({ username, password });
-  const response = await fetch(`/api/auth/login?${params}`, {
+export const register = async (
+  username: string,
+  password: string,
+  displayName: string
+): Promise<void> => {
+  await apiFetch<{ message: string }>("/api/auth/register", {
     method: "POST",
-    credentials: "include",
+    body: JSON.stringify({ username, password, displayName }),
   });
-  if (!response.ok) {
-    throw new Error("Login failed");
-  }
+};
+
+export const login = async (
+  username: string,
+  password: string
+): Promise<void> => {
+  await apiFetch<{ message: string }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
 };
 
 export const logout = async (): Promise<void> => {
-  const response = await fetch("/api/auth/logout", {
+  await apiFetch<{ message: string }>("/api/auth/logout", {
     method: "POST",
-    credentials: "include",
   });
-  if (!response.ok) {
-    throw new Error("Logout failed");
-  }
 };
 
 export const checkAuth = async (): Promise<boolean> => {
   try {
-    const response = await fetch("/api/auth/status", {
-      credentials: "include",
-    });
-    if (!response.ok) {
-      return false;
-    }
-    const data = await response.json();
+    const data = await apiFetch<{ authenticated: boolean }>("/api/auth/status");
     return data.authenticated === true;
   } catch {
     return false;
   }
 };
 
+export type ProfileData = {
+  username: string;
+  displayName: string;
+};
+
+export const getProfile = async (): Promise<ProfileData> =>
+  apiFetch<ProfileData>("/api/auth/profile");
+
+export const updateProfile = async (
+  displayName: string
+): Promise<ProfileData> =>
+  apiFetch<ProfileData>("/api/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ displayName }),
+  });
+
+// ---- Boards ----
+
+export const listBoards = async (): Promise<BoardSummary[]> =>
+  apiFetch<BoardSummary[]>("/api/boards");
+
+export const createBoard = async (
+  name: string,
+  description: string = ""
+): Promise<BoardSummary> =>
+  apiFetch<BoardSummary>("/api/boards", {
+    method: "POST",
+    body: JSON.stringify({ name, description }),
+  });
+
+export const getBoard = async (boardId: string): Promise<BoardData> =>
+  apiFetch<BoardData>(`/api/boards/${boardId}`);
+
+export const updateBoard = async (
+  boardId: string,
+  data: { name?: string; description?: string }
+): Promise<BoardSummary> =>
+  apiFetch<BoardSummary>(`/api/boards/${boardId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteBoard = async (boardId: string): Promise<void> =>
+  apiFetch<void>(`/api/boards/${boardId}`, { method: "DELETE" });
+
+// ---- Column operations ----
+
 export const renameColumn = async (
+  boardId: string,
   columnId: string,
   title: string
 ): Promise<BoardData> =>
-  requestBoard(`/api/columns/${columnId}`, {
+  apiFetch<BoardData>(`/api/boards/${boardId}/columns/${columnId}`, {
     method: "PATCH",
     body: JSON.stringify({ title }),
   });
 
+// ---- Card CRUD ----
+
 export const addCard = async (
+  boardId: string,
   columnId: string,
   title: string,
-  details: string
+  details: string,
+  priority: string = "medium",
+  dueDate: string | null = null
 ): Promise<BoardData> =>
-  requestBoard(`/api/columns/${columnId}/cards`, {
+  apiFetch<BoardData>(`/api/boards/${boardId}/columns/${columnId}/cards`, {
     method: "POST",
-    body: JSON.stringify({ title, details }),
+    body: JSON.stringify({ title, details, priority, dueDate }),
+  });
+
+export const updateCard = async (
+  boardId: string,
+  cardId: string,
+  data: {
+    title?: string;
+    details?: string;
+    priority?: string;
+    dueDate?: string | null;
+  }
+): Promise<BoardData> =>
+  apiFetch<BoardData>(`/api/boards/${boardId}/cards/${cardId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 
 export const deleteCard = async (
+  boardId: string,
   columnId: string,
   cardId: string
 ): Promise<BoardData> =>
-  requestBoard(`/api/columns/${columnId}/cards/${cardId}`, {
-    method: "DELETE",
-  });
+  apiFetch<BoardData>(
+    `/api/boards/${boardId}/columns/${columnId}/cards/${cardId}`,
+    { method: "DELETE" }
+  );
 
 export const moveCard = async (
+  boardId: string,
   cardId: string,
   targetColumnId: string,
   beforeCardId: string | null
 ): Promise<BoardData> =>
-  requestBoard(`/api/cards/${cardId}/move`, {
+  apiFetch<BoardData>(`/api/boards/${boardId}/cards/${cardId}/move`, {
     method: "POST",
-    body: JSON.stringify({
-      targetColumnId,
-      beforeCardId,
-    }),
+    body: JSON.stringify({ targetColumnId, beforeCardId }),
   });
+
+// ---- Labels ----
+
+export const createLabel = async (
+  boardId: string,
+  name: string,
+  color: string
+): Promise<Label> =>
+  apiFetch<Label>(`/api/boards/${boardId}/labels`, {
+    method: "POST",
+    body: JSON.stringify({ name, color }),
+  });
+
+export const updateLabel = async (
+  boardId: string,
+  labelId: string,
+  data: { name?: string; color?: string }
+): Promise<Label> =>
+  apiFetch<Label>(`/api/boards/${boardId}/labels/${labelId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteLabel = async (
+  boardId: string,
+  labelId: string
+): Promise<void> =>
+  apiFetch<void>(`/api/boards/${boardId}/labels/${labelId}`, {
+    method: "DELETE",
+  });
+
+export const setCardLabels = async (
+  boardId: string,
+  cardId: string,
+  labelIds: string[]
+): Promise<BoardData> =>
+  apiFetch<BoardData>(`/api/boards/${boardId}/cards/${cardId}/labels`, {
+    method: "PUT",
+    body: JSON.stringify({ labelIds }),
+  });
+
+// ---- AI Chat ----
 
 export type AIChatHistoryMessage = {
   role: "user" | "assistant";
@@ -121,12 +235,7 @@ export type AIChatHistoryMessage = {
 };
 
 export type AIChatOperation = {
-  type:
-    | "create_card"
-    | "update_card"
-    | "move_card"
-    | "delete_card"
-    | "rename_column";
+  type: "create_card" | "update_card" | "move_card" | "delete_card" | "rename_column";
   column_id: string | null;
   card_id: string | null;
   title: string | null;
@@ -141,31 +250,11 @@ export type AIChatResponse = {
 };
 
 export const aiChat = async (
+  boardId: string,
   message: string,
   history: AIChatHistoryMessage[]
-): Promise<AIChatResponse> => {
-  const response = await fetch("/api/ai/chat", {
+): Promise<AIChatResponse> =>
+  apiFetch<AIChatResponse>(`/api/boards/${boardId}/ai/chat`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message,
-      history,
-    }),
+    body: JSON.stringify({ message, history }),
   });
-
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const errorPayload = (await response.json()) as ApiErrorPayload;
-      detail = errorPayload.detail ?? "";
-    } catch {
-      detail = "";
-    }
-    const suffix = detail ? `: ${detail}` : "";
-    throw new Error(`AI request failed with status ${response.status}${suffix}`);
-  }
-
-  return (await response.json()) as AIChatResponse;
-};

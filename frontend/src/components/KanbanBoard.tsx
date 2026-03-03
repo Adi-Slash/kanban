@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { CardDetailModal } from "@/components/CardDetailModal";
 import {
   addCard as addCardApi,
   aiChat as aiChatApi,
@@ -20,6 +21,8 @@ import {
   getBoard,
   moveCard as moveCardApi,
   renameColumn as renameColumnApi,
+  updateCard as updateCardApi,
+  setCardLabels as setCardLabelsApi,
   type AIChatHistoryMessage,
 } from "@/lib/api";
 import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
@@ -32,7 +35,12 @@ type ChatMessage = {
 
 const MAX_CHAT_MESSAGES = 20;
 
-export const KanbanBoard = () => {
+type KanbanBoardProps = {
+  boardId: string;
+  onBack: () => void;
+};
+
+export const KanbanBoard = ({ boardId, onBack }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
@@ -43,12 +51,13 @@ export const KanbanBoard = () => {
   const [chatInput, setChatInput] = useState("");
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [detailCardId, setDetailCardId] = useState<string | null>(null);
 
   const loadBoard = useCallback(async () => {
     setIsLoadingBoard(true);
     setErrorMessage(null);
     try {
-      const remoteBoard = await getBoard();
+      const remoteBoard = await getBoard(boardId);
       setBoard(remoteBoard);
       setIsBackendConnected(true);
     } catch {
@@ -59,26 +68,16 @@ export const KanbanBoard = () => {
     } finally {
       setIsLoadingBoard(false);
     }
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     let isMounted = true;
-
     const runLoad = async () => {
-      try {
-        if (!isMounted) {
-          return;
-        }
-        await loadBoard();
-      } catch {
-        // handled inside loadBoard
-      }
+      if (!isMounted) return;
+      await loadBoard();
     };
-
     void runLoad();
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [loadBoard]);
 
   const sensors = useSensors(
@@ -97,9 +96,7 @@ export const KanbanBoard = () => {
     const { active, over } = event;
     setActiveCardId(null);
 
-    if (!over || active.id === over.id) {
-      return;
-    }
+    if (!over || active.id === over.id) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
@@ -107,23 +104,14 @@ export const KanbanBoard = () => {
     if (isBackendConnected) {
       const targetColumnId = overId.startsWith("col-")
         ? overId
-        : board.columns.find((column) => column.cardIds.includes(overId))?.id;
-      if (!targetColumnId) {
-        return;
-      }
+        : board.columns.find((col) => col.cardIds.includes(overId))?.id;
+      if (!targetColumnId) return;
       const beforeCardId = overId.startsWith("card-") ? overId : null;
-      void moveCardApi(activeId, targetColumnId, beforeCardId)
-        .then((nextBoard) => {
-          setBoard(nextBoard);
-          setErrorMessage(null);
-        })
-        .catch(() => {
-          setErrorMessage("Could not save card movement. Please try again.");
-        })
-        .finally(() => {
-          setIsSaving(false);
-        });
       setIsSaving(true);
+      void moveCardApi(boardId, activeId, targetColumnId, beforeCardId)
+        .then((next) => { setBoard(next); setErrorMessage(null); })
+        .catch(() => setErrorMessage("Could not save card movement. Please try again."))
+        .finally(() => setIsSaving(false));
       return;
     }
 
@@ -136,57 +124,42 @@ export const KanbanBoard = () => {
   const handleRenameColumn = (columnId: string, title: string) => {
     setBoard((prev) => ({
       ...prev,
-      columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
+      columns: prev.columns.map((col) =>
+        col.id === columnId ? { ...col, title } : col
       ),
     }));
-
-    if (!isBackendConnected) {
-      return;
-    }
-
-    void renameColumnApi(columnId, title)
-      .then((nextBoard) => {
-        setBoard(nextBoard);
-        setErrorMessage(null);
-      })
-      .catch(() => {
-        setErrorMessage("Could not save column rename. Please try again.");
-      })
-      .finally(() => {
-        setIsSaving(false);
-      });
+    if (!isBackendConnected) return;
     setIsSaving(true);
+    void renameColumnApi(boardId, columnId, title)
+      .then((next) => { setBoard(next); setErrorMessage(null); })
+      .catch(() => setErrorMessage("Could not save column rename. Please try again."))
+      .finally(() => setIsSaving(false));
   };
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
+  const handleAddCard = (
+    columnId: string,
+    title: string,
+    details: string,
+    priority: string,
+    dueDate: string | null,
+  ) => {
     if (isBackendConnected) {
       setIsSaving(true);
-      void addCardApi(columnId, title, details)
-        .then((nextBoard) => {
-          setBoard(nextBoard);
-          setErrorMessage(null);
-        })
-        .catch(() => {
-          setErrorMessage("Could not save new card. Please try again.");
-        })
-        .finally(() => {
-          setIsSaving(false);
-        });
+      void addCardApi(boardId, columnId, title, details, priority, dueDate)
+        .then((next) => { setBoard(next); setErrorMessage(null); })
+        .catch(() => setErrorMessage("Could not save new card. Please try again."))
+        .finally(() => setIsSaving(false));
       return;
     }
-
     const id = createId("card");
     setBoard((prev) => ({
       ...prev,
       cards: {
         ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
+        [id]: { id, title, details: details || "No details yet.", priority: priority as "low" | "medium" | "high" | "urgent", dueDate, labelIds: [] },
       },
-      columns: prev.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
+      columns: prev.columns.map((col) =>
+        col.id === columnId ? { ...col, cardIds: [...col.cardIds, id] } : col
       ),
     }));
   };
@@ -194,53 +167,60 @@ export const KanbanBoard = () => {
   const handleDeleteCard = (columnId: string, cardId: string) => {
     if (isBackendConnected) {
       setIsSaving(true);
-      void deleteCardApi(columnId, cardId)
-        .then((nextBoard) => {
-          setBoard(nextBoard);
-          setErrorMessage(null);
-        })
-        .catch(() => {
-          setErrorMessage("Could not delete card. Please try again.");
-        })
-        .finally(() => {
-          setIsSaving(false);
-        });
+      void deleteCardApi(boardId, columnId, cardId)
+        .then((next) => { setBoard(next); setErrorMessage(null); })
+        .catch(() => setErrorMessage("Could not delete card. Please try again."))
+        .finally(() => setIsSaving(false));
       return;
     }
+    setBoard((prev) => ({
+      ...prev,
+      cards: Object.fromEntries(
+        Object.entries(prev.cards).filter(([id]) => id !== cardId)
+      ),
+      columns: prev.columns.map((col) =>
+        col.id === columnId
+          ? { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) }
+          : col
+      ),
+    }));
+  };
 
-    setBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
-    });
+  const handleUpdateCard = (
+    cardId: string,
+    data: { title?: string; details?: string; priority?: string; dueDate?: string | null }
+  ) => {
+    if (isBackendConnected) {
+      setIsSaving(true);
+      void updateCardApi(boardId, cardId, data)
+        .then((next) => { setBoard(next); setErrorMessage(null); })
+        .catch(() => setErrorMessage("Could not update card. Please try again."))
+        .finally(() => setIsSaving(false));
+    }
+  };
+
+  const handleSetCardLabels = (cardId: string, labelIds: string[]) => {
+    if (isBackendConnected) {
+      setIsSaving(true);
+      void setCardLabelsApi(boardId, cardId, labelIds)
+        .then((next) => { setBoard(next); setErrorMessage(null); })
+        .catch(() => setErrorMessage("Could not update labels. Please try again."))
+        .finally(() => setIsSaving(false));
+    }
   };
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
+  const detailCard = detailCardId ? cardsById[detailCardId] : null;
   const canSendChat = chatInput.trim().length > 0 && !isChatSending;
 
   const limitChatMessages = (messages: ChatMessage[]): ChatMessage[] => {
-    if (messages.length <= MAX_CHAT_MESSAGES) {
-      return messages;
-    }
+    if (messages.length <= MAX_CHAT_MESSAGES) return messages;
     return messages.slice(messages.length - MAX_CHAT_MESSAGES);
   };
 
   const handleSendChat = async () => {
     const message = chatInput.trim();
-    if (!message || isChatSending) {
-      return;
-    }
+    if (!message || isChatSending) return;
 
     const userEntry: ChatMessage = {
       id: createId("chat"),
@@ -258,18 +238,14 @@ export const KanbanBoard = () => {
     setChatMessages((prev) => limitChatMessages([...prev, userEntry]));
 
     try {
-      const response = await aiChatApi(message, historyForApi);
+      const response = await aiChatApi(boardId, message, historyForApi);
       setBoard(response.board);
       setIsBackendConnected(true);
       setErrorMessage(null);
       setChatMessages((prev) =>
         limitChatMessages([
           ...prev,
-          {
-            id: createId("chat"),
-            role: "assistant",
-            content: response.assistantMessage,
-          },
+          { id: createId("chat"), role: "assistant", content: response.assistantMessage },
         ])
       );
     } catch (error) {
@@ -291,20 +267,22 @@ export const KanbanBoard = () => {
       <main className="relative flex min-h-screen flex-col gap-5 px-5 pb-6 pt-5">
         <header className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--stroke)] bg-white/80 px-6 py-4 shadow-[0_2px_12px_rgba(3,33,71,0.06)] backdrop-blur">
           <div className="flex items-center gap-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--navy-dark)]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--stroke)] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+              aria-label="Back to boards"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
               </svg>
-            </div>
+            </button>
             <div>
               <h1 className="font-display text-lg font-semibold text-[var(--navy-dark)]">
-                Kanban Studio
+                {board.name}
               </h1>
               <p className="text-xs text-[var(--gray-text)]">
-                Drag cards, rename columns, or ask AI to update your board.
+                {board.description || "Drag cards, rename columns, or ask AI to update your board."}
               </p>
             </div>
           </div>
@@ -348,9 +326,11 @@ export const KanbanBoard = () => {
                   key={column.id}
                   column={column}
                   cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  boardLabels={board.labels}
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
+                  onOpenCardDetail={setDetailCardId}
                 />
               ))}
             </section>
@@ -442,6 +422,23 @@ export const KanbanBoard = () => {
           </aside>
         </div>
       </main>
+
+      {detailCard && (
+        <CardDetailModal
+          card={detailCard}
+          labels={board.labels}
+          onClose={() => setDetailCardId(null)}
+          onUpdate={(data) => handleUpdateCard(detailCard.id, data)}
+          onSetLabels={(labelIds) => handleSetCardLabels(detailCard.id, labelIds)}
+          onDelete={() => {
+            const columnId = board.columns.find((col) =>
+              col.cardIds.includes(detailCard.id)
+            )?.id;
+            if (columnId) handleDeleteCard(columnId, detailCard.id);
+            setDetailCardId(null);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -3,10 +3,19 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
+class Label(BaseModel):
+    id: str
+    name: str
+    color: str
+
+
 class Card(BaseModel):
     id: str
     title: str
     details: str
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    dueDate: str | None = None
+    labelIds: list[str] = Field(default_factory=list)
 
 
 class Column(BaseModel):
@@ -16,8 +25,51 @@ class Column(BaseModel):
 
 
 class Board(BaseModel):
+    id: str
+    name: str
+    description: str = ""
     columns: list[Column]
     cards: dict[str, Card]
+    labels: list[Label] = Field(default_factory=list)
+
+
+class BoardSummary(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    columnCount: int
+    cardCount: int
+    updatedAt: str
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=2, max_length=50)
+    password: str = Field(min_length=4, max_length=200)
+    displayName: str = Field(default="", max_length=100)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+class ProfileResponse(BaseModel):
+    username: str
+    displayName: str
+
+
+class UpdateProfileRequest(BaseModel):
+    displayName: str = Field(max_length=100)
+
+
+class CreateBoardRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=1000)
+
+
+class UpdateBoardRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
 
 
 class RenameColumnRequest(BaseModel):
@@ -27,11 +79,34 @@ class RenameColumnRequest(BaseModel):
 class CreateCardRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     details: str = Field(default="", max_length=5000)
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    dueDate: str | None = None
+
+
+class UpdateCardRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    details: str | None = Field(default=None, max_length=5000)
+    priority: Literal["low", "medium", "high", "urgent"] | None = None
+    dueDate: str | None = None
 
 
 class MoveCardRequest(BaseModel):
     targetColumnId: str
     beforeCardId: str | None = None
+
+
+class SetCardLabelsRequest(BaseModel):
+    labelIds: list[str]
+
+
+class CreateLabelRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    color: str = Field(min_length=4, max_length=9)
+
+
+class UpdateLabelRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=50)
+    color: str | None = Field(default=None, min_length=4, max_length=9)
 
 
 class AISmokeResponse(BaseModel):

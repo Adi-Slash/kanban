@@ -3,20 +3,32 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { readAuthCookie, validateCredentials, writeAuthCookie, verifyAuth } from "@/lib/auth";
+import { BoardList } from "@/components/BoardList";
+import { validateCredentials, registerUser, performLogout, verifyAuth } from "@/lib/auth";
+
+type AppView = "login" | "register" | "boards" | "board";
 
 export const KanbanApp = () => {
   const searchParams = useSearchParams();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => readAuthCookie());
+  const [view, setView] = useState<AppView>("login");
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  const [regUsername, setRegUsername] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regDisplayName, setRegDisplayName] = useState("");
+  const [regError, setRegError] = useState("");
 
   useEffect(() => {
     const checkAuth = async () => {
       const isAuth = await verifyAuth();
-      setIsAuthenticated(isAuth);
+      if (isAuth) {
+        setView("boards");
+      }
       setIsLoading(false);
     };
     checkAuth();
@@ -24,31 +36,52 @@ export const KanbanApp = () => {
 
   useEffect(() => {
     if (searchParams && searchParams.get("unauthorized") === "true") {
-      setIsAuthenticated(false);
-      setError("Session expired. Please log in again.");
+      setView("login");
+      setLoginError("Session expired. Please log in again.");
     }
   }, [searchParams]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
-
-    const isValid = await validateCredentials(username, password);
+    setLoginError("");
+    const isValid = await validateCredentials(loginUsername, loginPassword);
     if (!isValid) {
-      setError("Invalid credentials. Use user / password.");
+      setLoginError("Invalid credentials.");
       return;
     }
+    setLoginPassword("");
+    setView("boards");
+  };
 
-    setPassword("");
-    setIsAuthenticated(true);
+  const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRegError("");
+    const success = await registerUser(regUsername, regPassword, regDisplayName);
+    if (!success) {
+      setRegError("Registration failed. Username may already be taken.");
+      return;
+    }
+    setRegPassword("");
+    setView("boards");
   };
 
   const handleLogout = async () => {
-    await writeAuthCookie(false);
-    setIsAuthenticated(false);
-    setUsername("");
-    setPassword("");
-    setError("");
+    await performLogout();
+    setView("login");
+    setLoginUsername("");
+    setLoginPassword("");
+    setLoginError("");
+    setSelectedBoardId(null);
+  };
+
+  const handleSelectBoard = (boardId: string) => {
+    setSelectedBoardId(boardId);
+    setView("board");
+  };
+
+  const handleBackToBoards = () => {
+    setSelectedBoardId(null);
+    setView("boards");
   };
 
   if (isLoading) {
@@ -59,18 +92,105 @@ export const KanbanApp = () => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (view === "register") {
     return (
       <main className="mx-auto flex min-h-screen max-w-xl items-center px-6 py-12">
         <section className="w-full rounded-3xl border border-[var(--stroke)] bg-white p-8 shadow-[var(--shadow)]">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--gray-text)]">
-            Project Management MVP
+            Project Management
+          </p>
+          <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
+            Create Account
+          </h1>
+          <form className="mt-6 space-y-4" onSubmit={handleRegister}>
+            <div>
+              <label
+                className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]"
+                htmlFor="reg-username"
+              >
+                Username
+              </label>
+              <input
+                id="reg-username"
+                value={regUsername}
+                onChange={(e) => setRegUsername(e.target.value)}
+                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
+                autoComplete="username"
+                required
+                minLength={2}
+              />
+            </div>
+            <div>
+              <label
+                className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]"
+                htmlFor="reg-displayname"
+              >
+                Display Name (optional)
+              </label>
+              <input
+                id="reg-displayname"
+                value={regDisplayName}
+                onChange={(e) => setRegDisplayName(e.target.value)}
+                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
+              />
+            </div>
+            <div>
+              <label
+                className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]"
+                htmlFor="reg-password"
+              >
+                Password
+              </label>
+              <input
+                id="reg-password"
+                type="password"
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
+                autoComplete="new-password"
+                required
+                minLength={4}
+              />
+            </div>
+            {regError ? (
+              <p className="text-sm font-medium text-red-700" role="alert">
+                {regError}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:brightness-110"
+            >
+              Create Account
+            </button>
+          </form>
+          <p className="mt-4 text-center text-sm text-[var(--gray-text)]">
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={() => { setView("login"); setRegError(""); }}
+              className="font-semibold text-[var(--primary-blue)] hover:underline"
+            >
+              Sign in
+            </button>
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (view === "login") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-6 py-12">
+        <section className="w-full rounded-3xl border border-[var(--stroke)] bg-white p-8 shadow-[var(--shadow)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--gray-text)]">
+            Project Management
           </p>
           <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
             Sign in
           </h1>
           <p className="mt-3 text-sm text-[var(--gray-text)]">
-            Use the demo credentials to access your Kanban board.
+            Sign in to access your boards. Demo: user / password
           </p>
           <form className="mt-6 space-y-4" onSubmit={handleLogin}>
             <div>
@@ -82,8 +202,8 @@ export const KanbanApp = () => {
               </label>
               <input
                 id="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
                 className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
                 autoComplete="username"
                 required
@@ -99,16 +219,16 @@ export const KanbanApp = () => {
               <input
                 id="password"
                 type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
                 className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
                 autoComplete="current-password"
                 required
               />
             </div>
-            {error ? (
+            {loginError ? (
               <p className="text-sm font-medium text-red-700" role="alert">
-                {error}
+                {loginError}
               </p>
             ) : null}
             <button
@@ -118,28 +238,35 @@ export const KanbanApp = () => {
               Sign in
             </button>
           </form>
+          <p className="mt-4 text-center text-sm text-[var(--gray-text)]">
+            New here?{" "}
+            <button
+              type="button"
+              onClick={() => { setView("register"); setLoginError(""); }}
+              className="font-semibold text-[var(--primary-blue)] hover:underline"
+            >
+              Create an account
+            </button>
+          </p>
         </section>
       </main>
     );
   }
 
-  return (
-    <div>
-      <div className="fixed right-5 top-[1.15rem] z-50">
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 rounded-lg border border-[var(--stroke)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] shadow-[0_2px_8px_rgba(3,33,71,0.06)] transition hover:text-[var(--navy-dark)]"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Log out
-        </button>
-      </div>
-      <KanbanBoard />
-    </div>
-  );
+  if (view === "boards") {
+    return (
+      <BoardList
+        onSelectBoard={handleSelectBoard}
+        onLogout={() => { void handleLogout(); }}
+      />
+    );
+  }
+
+  if (view === "board" && selectedBoardId) {
+    return (
+      <KanbanBoard boardId={selectedBoardId} onBack={handleBackToBoards} />
+    );
+  }
+
+  return null;
 };

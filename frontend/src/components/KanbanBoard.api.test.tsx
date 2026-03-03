@@ -9,12 +9,15 @@ vi.mock("@/lib/api", () => ({
   addCard: vi.fn(),
   deleteCard: vi.fn(),
   moveCard: vi.fn(),
+  updateCard: vi.fn(),
+  setCardLabels: vi.fn(),
   aiChat: vi.fn(),
 }));
 
 import { getBoard } from "@/lib/api";
 
 const mockedGetBoard = vi.mocked(getBoard);
+const noop = () => {};
 
 describe("KanbanBoard API integration", () => {
   beforeEach(() => {
@@ -24,16 +27,16 @@ describe("KanbanBoard API integration", () => {
   it("loads board data from backend API", async () => {
     mockedGetBoard.mockResolvedValue(initialData);
 
-    render(<KanbanBoard />);
+    render(<KanbanBoard boardId="board-1" onBack={noop} />);
 
-    expect(await screen.findByText("Kanban Studio")).toBeInTheDocument();
-    expect(mockedGetBoard).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Local Board")).toBeInTheDocument();
+    expect(mockedGetBoard).toHaveBeenCalledWith("board-1");
   });
 
   it("shows backend load error state", async () => {
     mockedGetBoard.mockRejectedValue(new Error("network"));
 
-    render(<KanbanBoard />);
+    render(<KanbanBoard boardId="board-1" onBack={noop} />);
 
     expect(
       await screen.findByText(/Could not load board from backend/i)

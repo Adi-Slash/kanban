@@ -1,36 +1,70 @@
-# The Project Management MVP web app
+# The Project Management App
 
 ## Business Requirements
 
-This project is building a Project Management App. Key features:
-- A user can sign in
-- When signed in, the user sees a Kanban board representing their project
-- The Kanban board has fixed columns that can be renamed
-- The cards on the Kanban board can be moved with drag and drop, and edited
-- There is an AI chat feature in a sidebar; the AI is able to create / edit / move one or more cards
-
-## Limitations
-
-For the MVP, there will only be a user sign in (hardcoded to 'user' and 'password') but the database will support multiple users for future.
-
-For the MVP, there will only be 1 Kanban board per signed in user.
-
-For the MVP, this will run locally (in a docker container)
+This project is a comprehensive Project Management App. Key features:
+- User registration and authentication with hashed passwords
+- Multiple Kanban boards per user
+- Kanban boards with renameable columns and draggable cards
+- Cards with priority levels (low/medium/high/urgent), due dates, and labels
+- Board-level labels with colors that can be assigned to cards
+- Card detail editing modal
+- AI chat sidebar that can create/edit/move/delete cards per board
 
 ## Technical Decisions
 
-- NextJS frontend
-- Python FastAPI backend, including serving the static NextJS site at /
+- NextJS frontend (static export)
+- Python FastAPI backend, serving the static NextJS site at /
 - Everything packaged into a Docker container
 - Use "uv" as the package manager for python in the Docker container
 - Use OpenRouter for the AI calls. An OPENROUTER_API_KEY is in .env in the project root
 - Use `openai/gpt-oss-120b` as the model
-- Use SQLLite local database for the database, creating a new db if it doesn't exist
+- Use SQLite local database (normalized schema with version tracking)
 - Start and Stop server scripts for Mac, PC, Linux in scripts/
+- In-memory session management with secure random tokens
+- PBKDF2-SHA256 password hashing (no external dependencies)
 
-## Starting Point
+## Authentication
 
-A working MVP of the frontend has been built and is already in frontend. This is not yet designed for the Docker setup. It's a pure frontend-only demo.
+- Session-based auth using `pm_session` cookie with random tokens
+- In-memory session store (tokens map to user_id + username)
+- Registration creates new users with hashed passwords
+- Login validates credentials against DB and creates session
+- All API endpoints (except auth and health) require authentication
+
+## API Structure
+
+Auth:
+- `POST /api/auth/register` - register new user
+- `POST /api/auth/login` - login with JSON body
+- `POST /api/auth/logout` - logout
+- `GET /api/auth/status` - check auth status
+- `GET /api/auth/profile` - get user profile
+- `PATCH /api/auth/profile` - update profile
+
+Boards:
+- `GET /api/boards` - list user's boards
+- `POST /api/boards` - create board
+- `GET /api/boards/{board_id}` - get board with columns, cards, labels
+- `PATCH /api/boards/{board_id}` - update board name/description
+- `DELETE /api/boards/{board_id}` - delete board
+
+Board operations:
+- `PATCH /api/boards/{board_id}/columns/{column_id}` - rename column
+- `POST /api/boards/{board_id}/columns/{column_id}/cards` - add card
+- `PATCH /api/boards/{board_id}/cards/{card_id}` - update card
+- `DELETE /api/boards/{board_id}/columns/{column_id}/cards/{card_id}` - delete card
+- `POST /api/boards/{board_id}/cards/{card_id}/move` - move card
+- `PUT /api/boards/{board_id}/cards/{card_id}/labels` - set card labels
+
+Labels:
+- `POST /api/boards/{board_id}/labels` - create label
+- `PATCH /api/boards/{board_id}/labels/{label_id}` - update label
+- `DELETE /api/boards/{board_id}/labels/{label_id}` - delete label
+
+AI:
+- `POST /api/ai/smoke` - AI connectivity check
+- `POST /api/boards/{board_id}/ai/chat` - AI chat for specific board
 
 ## Color Scheme
 

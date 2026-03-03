@@ -1,151 +1,91 @@
-# Database Design (Phase 5)
+# Database Schema (v2)
 
-This document proposes the normalized SQLite schema for the MVP Kanban app and the approach to produce board JSON for UI and AI usage.
+SQLite database with normalized tables. Schema version tracked via `PRAGMA user_version`.
 
-## Goals
+## Tables
 
-- Keep schema normalized and simple.
-- Support one board per signed-in user in MVP, while allowing multiple users and future expansion.
-- Preserve ordering for columns and cards.
-- Make it easy to construct and persist board JSON snapshots from relational data.
+### users
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | Auto-increment |
+| username | TEXT UNIQUE | Login identifier |
+| display_name | TEXT | User's display name |
+| password_hash | TEXT | PBKDF2-SHA256 with salt |
+| created_at | TEXT | Timestamp |
 
-## SQLite Schema
+### boards
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | Auto-increment |
+| user_id | INTEGER FK | References users(id), CASCADE delete |
+| name | TEXT | Board name |
+| description | TEXT | Board description |
+| created_at | TEXT | Timestamp |
+| updated_at | TEXT | Timestamp |
 
-```sql
-PRAGMA foreign_keys = ON;
+Multiple boards per user are supported.
 
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+### columns
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | Auto-increment |
+| board_id | INTEGER FK | References boards(id), CASCADE delete |
+| slug | TEXT | Unique per board |
+| title | TEXT | Display title |
+| position | INTEGER | Sort order, unique per board |
+| created_at | TEXT | Timestamp |
+| updated_at | TEXT | Timestamp |
 
-CREATE TABLE IF NOT EXISTS boards (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL UNIQUE,
-  name TEXT NOT NULL DEFAULT 'My Board',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+### cards
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | Auto-increment |
+| board_id | INTEGER FK | References boards(id), CASCADE delete |
+| title | TEXT | Card title |
+| details | TEXT | Card description |
+| priority | TEXT | low/medium/high/urgent |
+| due_date | TEXT | ISO date string, nullable |
+| created_at | TEXT | Timestamp |
+| updated_at | TEXT | Timestamp |
 
-CREATE TABLE IF NOT EXISTS columns (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  board_id INTEGER NOT NULL,
-  slug TEXT NOT NULL,
-  title TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
-  UNIQUE (board_id, slug),
-  UNIQUE (board_id, position)
-);
+### card_placements
+| Column | Type | Notes |
+|--------|------|-------|
+| card_id | INTEGER PK FK | References cards(id), CASCADE delete |
+| column_id | INTEGER FK | References columns(id), CASCADE delete |
+| position | INTEGER | Sort order, unique per column |
+| updated_at | TEXT | Timestamp |
 
-CREATE TABLE IF NOT EXISTS cards (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  board_id INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  details TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
-);
+### labels
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | Auto-increment |
+| board_id | INTEGER FK | References boards(id), CASCADE delete |
+| name | TEXT | Label name, unique per board |
+| color | TEXT | Hex color code |
+| created_at | TEXT | Timestamp |
 
-CREATE TABLE IF NOT EXISTS card_placements (
-  card_id INTEGER PRIMARY KEY,
-  column_id INTEGER NOT NULL,
-  position INTEGER NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
-  FOREIGN KEY (column_id) REFERENCES columns(id) ON DELETE CASCADE,
-  UNIQUE (column_id, position)
-);
+### card_labels
+| Column | Type | Notes |
+|--------|------|-------|
+| card_id | INTEGER PK FK | References cards(id), CASCADE delete |
+| label_id | INTEGER PK FK | References labels(id), CASCADE delete |
 
-CREATE INDEX IF NOT EXISTS idx_columns_board_position ON columns(board_id, position);
-CREATE INDEX IF NOT EXISTS idx_cards_board ON cards(board_id);
-CREATE INDEX IF NOT EXISTS idx_card_placements_column_position ON card_placements(column_id, position);
-```
+## API ID Mapping
 
-## Why this schema
+Internal integer IDs are mapped to string API IDs:
+- Boards: `board-{id}`
+- Columns: `col-{id}`
+- Cards: `card-{id}`
+- Labels: `label-{id}`
 
-- `users` supports future multi-user behavior.
-- `boards.user_id UNIQUE` enforces one board per user for MVP.
-- `columns.position` and `card_placements.position` preserve deterministic ordering.
-- `cards` is independent from placement, so moving a card only updates placement data.
-- `card_placements.card_id PRIMARY KEY` guarantees each card is in exactly one column.
+## Seed Data
 
-## Board JSON projection strategy
+On first initialization, the database is seeded with:
+- Default user: `user` / `password` (hashed)
+- One board with 5 columns and 8 cards
+- 5 default labels (Bug, Feature, Enhancement, Documentation, Design)
 
-The frontend and AI flows need the board in a JSON shape similar to the existing frontend model. Build that from relational rows:
+## Migration
 
-1. Load board for user.
-2. Load ordered columns (`ORDER BY position`).
-3. Load cards joined with placement and ordered by `(column.position, card_placements.position)`.
-4. Construct JSON:
-   - `columns[]`: each with `id`, `title`, and ordered `cardIds[]`
-   - `cards{}`: map of card id to card payload
-
-Example response shape:
-
-```json
-{
-  "columns": [
-    { "id": "col-1", "title": "Backlog", "cardIds": ["card-1", "card-2"] }
-  ],
-  "cards": {
-    "card-1": { "id": "card-1", "title": "Task A", "details": "..." }
-  }
-}
-```
-
-Implementation note: database integer IDs can be translated to frontend IDs (`col-{id}`, `card-{id}`) at the API boundary to preserve current client expectations.
-
-## Write/update strategy
-
-- Wrap all board mutations in one transaction.
-- For reorder/move operations:
-  - Update affected `position` values in minimal ranges.
-  - Update `updated_at` on changed rows.
-- For delete operations:
-  - Delete from `cards`; placement is removed by cascade.
-
-## Bootstrap and migration approach
-
-- On backend startup:
-  - Create DB file if missing.
-  - Execute `CREATE TABLE IF NOT EXISTS` statements.
-  - Ensure required indexes exist.
-- Seed default data for MVP user on first run:
-  - user: `user` / `password`
-  - one board for that user
-  - five default columns
-  - starter cards (optional if keeping empty board)
-
-## Test plan
-
-- Schema bootstrap test:
-  - Fresh DB creates all tables/indexes without error.
-- Relational integrity test:
-  - Invalid foreign keys fail.
-  - Card cannot exist in multiple columns (placement PK).
-- Ordering test:
-  - Reordering columns/cards persists and round-trips correctly.
-- Projection test:
-  - Relational data converts to expected board JSON shape/order.
-- Transaction safety test:
-  - Partial failure in multi-step update rolls back all changes.
-
-## Open decisions for sign-off
-
-- ID strategy:
-  - Keep integer DB IDs internally and map to `col-*` / `card-*` in API (recommended), or
-  - Store string IDs directly in DB.
-- Seed policy:
-  - Seed starter cards, or seed only empty columns.
-
-## Recommendation
-
-- Use integer IDs in DB with API mapping to string IDs.
-- Seed default columns plus starter cards to match current demo behavior.
+Schema version is tracked in `PRAGMA user_version`. When the schema version increases, all tables are dropped and recreated. This is acceptable for the development phase.

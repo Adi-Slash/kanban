@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
 
-const initialFormState = { title: "", details: "" };
+const initialFormState = { title: "", details: "", priority: "medium", dueDate: "" };
 
 type NewCardFormProps = {
-  onAdd: (title: string, details: string) => void;
+  onAdd: (title: string, details: string, priority: string, dueDate: string | null) => void;
 };
 
 export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
@@ -15,7 +15,12 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
     if (!formState.title.trim()) {
       return;
     }
-    onAdd(formState.title.trim(), formState.details.trim());
+    onAdd(
+      formState.title.trim(),
+      formState.details.trim(),
+      formState.priority,
+      formState.dueDate || null,
+    );
     setFormState(initialFormState);
     setIsOpen(false);
   };
@@ -42,6 +47,28 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             rows={2}
             className="w-full resize-none rounded-lg border border-[var(--stroke)] bg-white px-3 py-1.5 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />
+          <div className="flex gap-2">
+            <select
+              value={formState.priority}
+              onChange={(event) =>
+                setFormState((prev) => ({ ...prev, priority: event.target.value }))
+              }
+              className="rounded-lg border border-[var(--stroke)] bg-white px-2 py-1.5 text-xs text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+            <input
+              type="date"
+              value={formState.dueDate}
+              onChange={(event) =>
+                setFormState((prev) => ({ ...prev, dueDate: event.target.value }))
+              }
+              className="rounded-lg border border-[var(--stroke)] bg-white px-2 py-1.5 text-xs text-[var(--navy-dark)] outline-none focus:border-[var(--primary-blue)]"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="submit"

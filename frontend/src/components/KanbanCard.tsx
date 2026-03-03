@@ -1,14 +1,24 @@
+"use client";
+
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import type { Card } from "@/lib/kanban";
+import type { Card, Label } from "@/lib/kanban";
+import { priorityColors } from "@/lib/kanban";
 
 type KanbanCardProps = {
   card: Card;
+  boardLabels: Label[];
   onDelete: (cardId: string) => void;
+  onOpenDetail: (cardId: string) => void;
 };
 
-export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
+export const KanbanCard = ({
+  card,
+  boardLabels,
+  onDelete,
+  onOpenDetail,
+}: KanbanCardProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
 
@@ -16,6 +26,10 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  const cardLabels = boardLabels.filter((l) => card.labelIds.includes(l.id));
+  const isOverdue =
+    card.dueDate && new Date(card.dueDate) < new Date(new Date().toISOString().split("T")[0]);
 
   return (
     <article
@@ -31,8 +45,26 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
       {...listeners}
       data-testid={`card-${card.id}`}
     >
+      {cardLabels.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {cardLabels.map((label) => (
+            <span
+              key={label.id}
+              className="inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold text-white"
+              style={{ backgroundColor: label.color }}
+            >
+              {label.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => onOpenDetail(card.id)}
+          className="min-w-0 flex-1 text-left"
+        >
           <h4 className="font-display text-sm font-semibold leading-snug text-[var(--navy-dark)]">
             {card.title}
           </h4>
@@ -41,7 +73,7 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
               {card.details}
             </p>
           )}
-        </div>
+        </button>
         <button
           type="button"
           onClick={() => onDelete(card.id)}
@@ -56,6 +88,27 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
             <line x1="14" y1="11" x2="14" y2="17" />
           </svg>
         </button>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2">
+        {card.priority !== "medium" && (
+          <span
+            className="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase text-white"
+            style={{ backgroundColor: priorityColors[card.priority] }}
+          >
+            {card.priority}
+          </span>
+        )}
+        {card.dueDate && (
+          <span
+            className={clsx(
+              "text-[10px] font-medium",
+              isOverdue ? "text-red-500" : "text-[var(--gray-text)]"
+            )}
+          >
+            {card.dueDate}
+          </span>
+        )}
       </div>
     </article>
   );
