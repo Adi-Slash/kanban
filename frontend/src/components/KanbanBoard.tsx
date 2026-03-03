@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
-  closestCorners,
+  closestCenter,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
@@ -87,16 +88,42 @@ export const KanbanBoard = ({ boardId, onBack }: KanbanBoardProps) => {
   );
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
+  const boardBeforeDragRef = useRef<BoardData | null>(null);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
+    boardBeforeDragRef.current = board;
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    setBoard((prev) => {
+      const activeColId = prev.columns.find((c) =>
+        c.cardIds.includes(activeId)
+      )?.id;
+      const overColId = overId.startsWith("col-")
+        ? overId
+        : prev.columns.find((c) => c.cardIds.includes(overId))?.id;
+
+      if (!activeColId || !overColId || activeColId === overColId) return prev;
+      return { ...prev, columns: moveCard(prev.columns, activeId, overId) };
+    });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
 
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id) {
+      if (boardBeforeDragRef.current) setBoard(boardBeforeDragRef.current);
+      boardBeforeDragRef.current = null;
+      return;
+    }
 
     const activeId = active.id as string;
     const overId = over.id as string;
@@ -105,16 +132,26 @@ export const KanbanBoard = ({ boardId, onBack }: KanbanBoardProps) => {
       const targetColumnId = overId.startsWith("col-")
         ? overId
         : board.columns.find((col) => col.cardIds.includes(overId))?.id;
-      if (!targetColumnId) return;
+      if (!targetColumnId) {
+        if (boardBeforeDragRef.current) setBoard(boardBeforeDragRef.current);
+        boardBeforeDragRef.current = null;
+        return;
+      }
       const beforeCardId = overId.startsWith("card-") ? overId : null;
+      const revertBoard = boardBeforeDragRef.current;
+      boardBeforeDragRef.current = null;
       setIsSaving(true);
       void moveCardApi(boardId, activeId, targetColumnId, beforeCardId)
         .then((next) => { setBoard(next); setErrorMessage(null); })
-        .catch(() => setErrorMessage("Could not save card movement. Please try again."))
+        .catch(() => {
+          if (revertBoard) setBoard(revertBoard);
+          setErrorMessage("Could not save card movement. Please try again.");
+        })
         .finally(() => setIsSaving(false));
       return;
     }
 
+    boardBeforeDragRef.current = null;
     setBoard((prev) => ({
       ...prev,
       columns: moveCard(prev.columns, activeId, overId),
@@ -316,8 +353,9 @@ export const KanbanBoard = ({ boardId, onBack }: KanbanBoardProps) => {
         <div className="grid min-h-0 flex-1 gap-5 xl:grid-cols-[1fr_340px]">
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={closestCenter}
             onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
             <section className="grid auto-cols-fr grid-flow-col gap-4">
