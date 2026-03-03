@@ -62,10 +62,10 @@ describe("KanbanBoard AI chat", () => {
 
     await screen.findByText("Kanban Studio");
     await userEvent.type(
-      screen.getByLabelText("Ask AI"),
+      screen.getByPlaceholderText(/ask ai/i),
       "Add a card called AI Card in Backlog"
     );
-    await userEvent.click(screen.getByRole("button", { name: /send to ai/i }));
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
     expect(await screen.findByText("Added a new card in Backlog.")).toBeInTheDocument();
     expect(mockedAiChat).toHaveBeenCalledWith("Add a card called AI Card in Backlog", []);
@@ -80,8 +80,8 @@ describe("KanbanBoard AI chat", () => {
     render(<KanbanBoard />);
 
     await screen.findByText("Kanban Studio");
-    await userEvent.type(screen.getByLabelText("Ask AI"), "Move card-1 to Review");
-    await userEvent.click(screen.getByRole("button", { name: /send to ai/i }));
+    await userEvent.type(screen.getByPlaceholderText(/ask ai/i), "Move card-1 to Review");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
     expect(
       await screen.findByText(/AI request failed with status 502/i)

@@ -125,12 +125,17 @@ export const KanbanApp = () => {
 
   return (
     <div>
-      <div className="fixed right-6 top-5 z-50">
+      <div className="fixed right-5 top-[1.15rem] z-50">
         <button
           type="button"
           onClick={handleLogout}
-          className="rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--navy-dark)] shadow-[var(--shadow)] transition hover:border-[var(--primary-blue)]"
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--stroke)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] shadow-[0_2px_8px_rgba(3,33,71,0.06)] transition hover:text-[var(--navy-dark)]"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
           Log out
         </button>
       </div>
