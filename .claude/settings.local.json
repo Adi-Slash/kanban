@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__atslassian__getAccessibleAtlassianResources",
+      "mcp__atslassian__getJiraIssue"
+    ]
+  }
+}
